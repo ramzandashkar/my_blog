@@ -1,4 +1,8 @@
-from django.contrib.postgres.search import SearchVector
+from django.contrib.postgres.search import (
+    SearchVector,
+    SearchQuery,
+    SearchRank,
+)
 from django.core.mail import send_mail
 from django.core.paginator import (
     Paginator,
@@ -147,9 +151,12 @@ def post_search(request):
         form = SearchForm(request.GET)
         if form.is_valid():
             query = form.cleaned_data['query']
+            search_vector = SearchVector('title', 'body', config='russian')
+            search_query = SearchQuery(query, config='russian')
             results = Post.published.annotate(
-                search=SearchVector('title', 'body'),
-            ).filter(search=query)
+                search=search_vector,
+                rank=SearchRank(search_vector, search_query)
+            ).filter(search=search_query).order_by('-rank')
 
     context = {
             'form': form,
