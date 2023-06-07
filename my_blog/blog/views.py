@@ -1,3 +1,4 @@
+from django.contrib.postgres.search import SearchVector
 from django.core.mail import send_mail
 from django.core.paginator import (
     Paginator,
@@ -7,11 +8,10 @@ from django.core.paginator import (
 from django.db.models import Count
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.http import require_POST
-from django.views.generic import ListView
 from taggit.models import Tag
 
-from .forms import EmailPostForm, CommentForm
-from .models import Post, Comment
+from .forms import EmailPostForm, CommentForm, SearchForm
+from .models import Post
 
 
 # class PostListView(ListView):
@@ -22,6 +22,7 @@ from .models import Post, Comment
 
 
 def post_list(request, tag_slug=None):
+    template = 'blog/post/list.html'
     post_list = Post.published.all()
     tag = None
     if tag_slug:
@@ -35,14 +36,19 @@ def post_list(request, tag_slug=None):
         posts = paginator.page(1)
     except EmptyPage:
         posts = paginator.page(paginator.num_pages)
-    return render(request,
-                  'blog/post/list.html',
-                  {'posts': posts,
-                   'tag': tag,})
+
+    context = {
+        'posts': posts,
+        'tag': tag,
+    }
+
+    return render(request, template, context)
 
 
 def post_share(request, post_id):
-    # Retrieve post by id
+    """Отправка поста на e-mail. Retrieve post by id"""
+
+    template = 'blog/post/share.html'
     post = get_object_or_404(Post, id=post_id, status=Post.Status.PUBLISHED)
     sent = False
 
@@ -63,12 +69,19 @@ def post_share(request, post_id):
 
     else:
         form = EmailPostForm()
-    return render(request, 'blog/post/share.html', {'post': post,
-                                                    'form': form,
-                                                    'sent': sent})
+
+    context = {
+        'post': post,
+        'form': form,
+        'sent': sent,
+    }
+
+    return render(request, template, context)
 
 
 def post_detail(request, year, month, day, post):
+    """Детальное описание поста"""
+
     template = 'blog/post/detail.html'
     post = get_object_or_404(
         Post,
@@ -85,6 +98,7 @@ def post_detail(request, year, month, day, post):
     post_tags_ids = post.tags.values_list('id', flat=True)
     similar_posts = Post.published.filter(tags__in=post_tags_ids).exclude(id=post.id)
     similar_posts = similar_posts.annotate(same_tags=Count('tags')).order_by('-same_tags', '-publish')[:4]
+
     context = {
         'post': post,
         'comments': comments,
@@ -97,6 +111,9 @@ def post_detail(request, year, month, day, post):
 
 @require_POST
 def post_comment(request, post_id):
+    """Комментарии поста"""
+
+    template = 'blog/post/comment.html'
     post = get_object_or_404(
         Post,
         id=post_id,
@@ -108,4 +125,36 @@ def post_comment(request, post_id):
         comment = form.save(commit=False)
         comment.post = post
         comment.save()
-    return render(request, 'blog/post/comment.html', {'post': post, 'form': form, 'comment': comment})
+
+    context = {
+        'post': post,
+        'form': form,
+        'comment': comment,
+    }
+
+    return render(request, template, context)
+
+
+def post_search(request):
+    """Поисковые запросы по постам"""
+
+    template = 'blog/post/search.html'
+    form = SearchForm()
+    query = None
+    results = []
+
+    if 'query' in request.GET:
+        form = SearchForm(request.GET)
+        if form.is_valid():
+            query = form.cleaned_data['query']
+            results = Post.published.annotate(
+                search=SearchVector('title', 'body'),
+            ).filter(search=query)
+
+    context = {
+            'form': form,
+            'query': query,
+            'results': results,
+    }
+
+    return render(request, template, context)
