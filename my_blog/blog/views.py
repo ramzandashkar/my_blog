@@ -1,7 +1,7 @@
 from django.contrib.postgres.search import (
     SearchVector,
     SearchQuery,
-    SearchRank,
+    SearchRank, TrigramSimilarity,
 )
 from django.core.mail import send_mail
 from django.core.paginator import (
@@ -139,6 +139,34 @@ def post_comment(request, post_id):
     return render(request, template, context)
 
 
+# def post_search(request):
+#     """Поисковые запросы по постам"""
+#
+#     template = 'blog/post/search.html'
+#     form = SearchForm()
+#     query = None
+#     results = []
+#
+#     if 'query' in request.GET:
+#         form = SearchForm(request.GET)
+#         if form.is_valid():
+#             query = form.cleaned_data['query']
+#             search_vector = SearchVector('title', 'body', weight='A', config='russian') + SearchVector('body', weight='B')
+#             search_query = SearchQuery(query, config='russian')
+#             results = Post.published.annotate(
+#                 search=search_vector,
+#                 rank=SearchRank(search_vector, search_query)
+#             ).filter(rank__gte=0.3).filter(search=search_query).order_by('-rank')
+#
+#     context = {
+#             'form': form,
+#             'query': query,
+#             'results': results,
+#     }
+#
+#     return render(request, template, context)
+
+
 def post_search(request):
     """Поисковые запросы по постам"""
 
@@ -151,12 +179,9 @@ def post_search(request):
         form = SearchForm(request.GET)
         if form.is_valid():
             query = form.cleaned_data['query']
-            search_vector = SearchVector('title', 'body', config='russian')
-            search_query = SearchQuery(query, config='russian')
             results = Post.published.annotate(
-                search=search_vector,
-                rank=SearchRank(search_vector, search_query)
-            ).filter(search=search_query).order_by('-rank')
+                similarity=TrigramSimilarity('title', query),
+            ).filter(similarity__gt=0.1).order_by('-similarity')
 
     context = {
             'form': form,
